@@ -17,6 +17,7 @@ require_relative "./regular_expression/nfa"
 require_relative "./regular_expression/parser"
 require_relative "./regular_expression/pattern"
 require_relative "./regular_expression/scheduler"
+require_relative "./regular_expression/flags"
 require_relative "./regular_expression/version"
 
 require_relative "./regular_expression/compiler/ruby"

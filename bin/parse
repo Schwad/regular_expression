@@ -15,11 +15,12 @@ end
 # Pass the source through the various parsing phases
 #
 source = ARGV.shift
+flags = ARGV.shift
 
 ast = RegularExpression::Parser.new.parse(source)
 RegularExpression::AST.to_dot(ast)
 
-nfa = ast.to_nfa
+nfa = ast.to_nfa(RegularExpression::Flags.parse(flags))
 RegularExpression::NFA.to_dot(nfa)
 
 bytecode = RegularExpression::Bytecode.compile(nfa)

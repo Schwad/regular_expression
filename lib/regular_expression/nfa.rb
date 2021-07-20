@@ -44,6 +44,19 @@ module RegularExpression
           node.attributes.merge!(label: "Start", shape: "box")
         end
       end
+
+      def each_state
+        to_process = [self]
+        visited = Set.new
+
+        while (state = to_process.pop)
+          visited << state
+          state.transitions.each do |transition|
+            to_process << transition.state unless visited.include?(state)
+          end
+          yield(state)
+        end
+      end
     end
 
     class FinishState < State
