@@ -27,7 +27,7 @@ module RegularExpression
         expressions.each { |expression| expression.to_dot(node) }
       end
 
-      def to_nfa
+      def to_nfa(flags = [])
         start = NFA::StartState.new
         current = start
         labels = ("1"..).each
@@ -40,6 +40,12 @@ module RegularExpression
         finish = NFA::FinishState.new
         expressions.each do |expression|
           expression.to_nfa(current, finish, labels)
+        end
+
+        if flags.any?
+          start.each_state do |state|
+            flags.each { |flag| flag.modify_state(state) }
+          end
         end
 
         start

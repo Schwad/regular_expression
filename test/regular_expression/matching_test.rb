@@ -243,6 +243,11 @@ module RegularExpression
       refute_matches(%q{a\\+}, "a")
     end
 
+    def test_insensitive_flag
+      assert_matches(%q{a}, "A", "i")
+      assert_matches(%q{[a-z]}, "A", "i")
+    end
+
     def test_raises_syntax_errors
       assert_raises(SyntaxError) do
         Parser.new.parse("\u0000")
@@ -276,10 +281,10 @@ module RegularExpression
 
     private
 
-    def assert_matches(source, value)
-      message = "Expected /#{source}/ to match #{value.inspect}"
+    def assert_matches(source, value, flags = "")
+      message = "Expected /#{source}/#{flags} to match #{value.inspect}"
 
-      pattern = Pattern.new(source)
+      pattern = Pattern.new(source, flags)
       assert_operator pattern, :match?, value, message
 
       pattern.compile(compiler: Compiler::X86)

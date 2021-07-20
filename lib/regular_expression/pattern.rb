@@ -4,9 +4,10 @@ module RegularExpression
   class Pattern
     attr_reader :bytecode
 
-    def initialize(source)
+    def initialize(source, flags = "")
+      flags = Flags.parse(flags)
       ast = Parser.new.parse(source)
-      @bytecode = Bytecode.compile(ast.to_nfa)
+      @bytecode = Bytecode.compile(ast.to_nfa(flags))
     end
 
     def compile(compiler: Compiler::X86)
