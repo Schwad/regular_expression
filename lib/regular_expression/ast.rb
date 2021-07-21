@@ -60,10 +60,9 @@ module RegularExpression
             expressions = node.expressions
             quantifier = node.quantifier
 
-            work = []
-            quantifier.quantify(start, finish, labels) do |qstart, qfinish|
+            worklist += apply_quantify(quantifier.quantify(start, finish, labels)) do |qstart, _qfinish, acc|
               expressions.each do |expression|
-                work << [expression, qstart, finish]
+                acc << [expression, qstart, finish]
               end
             end
 
@@ -73,30 +72,24 @@ module RegularExpression
             quantifier = node.quantifier
             name = node.name
 
-            work = []
-            quantifier.quantify(start, finish, labels) do |quantified_start, quantified_finish|
+            worklist += apply_quantify(quantifier.quantify(start, finish, labels)) do |qstart, qfinish, acc|
               capture_start = NFA::State.new
-              quantified_start.add_transition(NFA::Transition::StartCapture.new(capture_start, name))
+              qstart.add_transition(NFA::Transition::StartCapture.new(capture_start, name))
 
               capture_finish = NFA::State.new
-              capture_finish.add_transition(NFA::Transition::EndCapture.new(quantified_finish, name))
+              capture_finish.add_transition(NFA::Transition::EndCapture.new(qfinish, name))
 
-              expressions.each do |expression|
-                work << [expression, capture_start, capture_finish]
+              expressions.map do |expression|
+                acc << [expression, capture_start, capture_finish]
               end
-
-              worklist += work.reverse!
             end
           when Match
             item = node.item
             quantifier = node.quantifier
 
-            work = []
-            quantifier.quantify(start, finish, labels) do |qstart, qfinish|
-              work << [item, qstart, qfinish]
+            worklist += apply_quantify(quantifier.quantify(start, finish, labels)) do |qstart, qfinish, acc|
+              acc << [item, qstart, qfinish]
             end
-
-            worklist += work.reverse!
           when CharacterGroup
             items = node.items
 
@@ -104,8 +97,8 @@ module RegularExpression
               transition = NFA::Transition::Invert.new(finish, items.flat_map(&:to_nfa_values).sort)
               start.add_transition(transition)
             else
-              worklist += items.map do |item|
-                [item, start, finish]
+              worklist += items.map do |nitem|
+                [nitem, start, finish]
               end.reverse!
             end
           when CharacterClass
@@ -161,6 +154,8 @@ module RegularExpression
               end
 
             start.add_transition(transition)
+          when AddEpsilon
+            start.add_transition(NFA::Transition::Epsilon.new(finish))
           else
             raise node.inspect
           end
@@ -168,6 +163,22 @@ module RegularExpression
 
         start_state
       end
+
+      private
+
+      def apply_quantify(quantify)
+        work = []
+
+        quantify.transitions.each do |start, finish|
+          yield(start, finish, work)
+        end
+
+        quantify.after.map { |start, finish| work << [AddEpsilon, start, finish] }
+
+        work.reverse!
+      end
+
+      AddEpsilon = Object.new
     end
 
     class Expression
@@ -462,7 +473,7 @@ module RegularExpression
         def to_dot(parent); end
 
         def quantify(start, finish, _labels)
-          yield start, finish
+          QuantifyResult.new([[start, finish]])
         end
       end
 
@@ -472,8 +483,7 @@ module RegularExpression
         end
 
         def quantify(start, finish, _labels)
-          yield start, start
-          start.add_transition(NFA::Transition::Epsilon.new(finish))
+          QuantifyResult.new([[start, start]], after: [[start, finish]])
         end
       end
 
@@ -483,8 +493,7 @@ module RegularExpression
         end
 
         def quantify(start, finish, _labels)
-          yield start, finish
-          finish.add_transition(NFA::Transition::Epsilon.new(start))
+          QuantifyResult.new([[start, finish]], after: [[finish, start]])
         end
       end
 
@@ -494,8 +503,7 @@ module RegularExpression
         end
 
         def quantify(start, finish, _labels)
-          yield start, finish
-          start.add_transition(NFA::Transition::Epsilon.new(finish))
+          QuantifyResult.new([[start, finish]], after: [[start, finish]])
         end
       end
 
@@ -513,9 +521,11 @@ module RegularExpression
         def quantify(start, finish, labels)
           states = [start, *(value - 1).times.map { NFA::State.new(labels.next) }, finish]
 
-          value.times do |index|
-            yield states[index], states[index + 1]
+          transitions = value.times.map do |index|
+            [states[index], states[index + 1]]
           end
+
+          QuantifyResult.new(transitions)
         end
       end
 
@@ -533,11 +543,12 @@ module RegularExpression
         def quantify(start, finish, labels)
           states = [start, *(value - 1).times.map { NFA::State.new(labels.next) }, finish]
 
-          value.times do |index|
-            yield states[index], states[index + 1]
+          transitions = value.times.map do |index|
+            [states[index], states[index + 1]]
           end
 
-          states[-1].add_transition(NFA::Transition::Epsilon.new(states[-2]))
+          after = [[states[-1], states[-2]]]
+          QuantifyResult.new(transitions, after: after)
         end
       end
 
@@ -556,16 +567,27 @@ module RegularExpression
         def quantify(start, finish, labels)
           states = [start, *(upper - 1).times.map { NFA::State.new(labels.next) }, finish]
 
-          upper.times do |index|
-            yield states[index], states[index + 1]
+          transitions = upper.times.map do |index|
+            [states[index], states[index + 1]]
           end
 
-          (upper - lower).times do |index|
-            transition = NFA::Transition::Epsilon.new(states[-1])
-            states[lower + index].add_transition(transition)
+          after = (upper - lower).times.map do |index|
+            [states[lower + index], states[-1]]
           end
+
+          QuantifyResult.new(transitions, after: after)
         end
       end
+
+      class QuantifyResult
+        attr_reader :transitions, :after # [(state, state)]
+
+        def initialize(transitions, after: [])
+          @transitions = transitions
+          @after = after
+        end
+      end
+      private_constant(:QuantifyResult)
     end
   end
 end
